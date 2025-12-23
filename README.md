@@ -46,7 +46,7 @@ A full-stack task management application built with **Spring Boot microservices*
 ### 1. Clone the repository
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/oussamaelmessaoudi.git
 cd task-management-system
 ```
 
