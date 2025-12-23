@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: task-management-db
+    environment:
+      POSTGRES_DB: taskmanagement
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - task-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d taskmanagement"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Authentication Service
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/taskmanagement
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      JWT_SECRET: your-secret-key-change-this-in-production-minimum-256-bits
+      JWT_EXPIRATION: 86400000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  # Project Service
+  project-service:
+    build:
+      context: ./backend/project-service
+      dockerfile: Dockerfile
+    container_name: project-service
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/taskmanagement
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      AUTH_SERVICE_URL: http://auth-service:8081
+      JWT_SECRET: your-secret-key-change-this-in-production-minimum-256-bits
+    depends_on:
+      postgres:
+        condition: service_healthy
+      auth-service:
+        condition: service_started
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  # Task Service
+  task-service:
+    build:
+      context: ./backend/task-service
+      dockerfile: Dockerfile
+    container_name: task-service
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/taskmanagement
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin123
+      PROJECT_SERVICE_URL: http://project-service:8082
+      JWT_SECRET: your-secret-key-change-this-in-production-minimum-256-bits
+    depends_on:
+      postgres:
+        condition: service_healthy
+      project-service:
+        condition: service_started
+    networks:
+      - task-network
+    restart: unless-stopped
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: task-management-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_AUTH_SERVICE_URL: http://localhost:8081
+      REACT_APP_PROJECT_SERVICE_URL: http://localhost:8082
+      REACT_APP_TASK_SERVICE_URL: http://localhost:8083
+    depends_on:
+      - auth-service
+      - project-service
+      - task-service
+    networks:
+      - task-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  task-network:
+    driver: bridge
